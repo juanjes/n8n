@@ -7,6 +7,7 @@ metadata:
   namespace: n8n
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       service: n8n
@@ -25,14 +26,62 @@ spec:
             - name: n8n-claim0
               mountPath: /data
       containers:
-        - command:
-            - /bin/sh
-          args:
-            - -c
-            - sleep 5; n8n start
+        - command: ["/bin/sh"]
+          args: ["-c", "sleep 5 && exec n8n start"]
           env:
+            - name: N8N_HOST
+              value: "n8n.local"
+            - name: N8N_PROTOCOL
+              value: "http"                    # <- n8n habla HTTP internamente
+            - name: N8N_PORT
+              value: "5678"                     # <- no se cambia
+            - name: N8N_WEBHOOK_URL
+              value: "https://n8n.local/"       # <- para generación de enlaces públicos
+            - name: N8N_SECURE_COOKIE
+              value: "true"
+            - name: N8N_PATH
+              value: /
+            - name: N8N_BASIC_AUTH_ACTIVE
+              value: "true"
+            - name: N8N_LOG_OUTPUT
+              value: json
+            - name: N8N_BASIC_AUTH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secret
+                  key: basic_auth_user
+            - name: N8N_BASIC_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secret
+                  key: basic_auth_password
+            - name: N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+              value: "true"  
+            - name: N8N_EXECUTIONS_MODE
+              value: "queue"
+            - name: N8N_QUEUE_MODE
+              value: "redis"
+            - name: QUEUE_BULL_REDIS_HOST
+              value: "redis.redis.svc.cluster.local"
+            - name: QUEUE_BULL_REDIS_PORT
+              value: "6379"
+            - name: QUEUE_BULL_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+            - name: QUEUE_BULL_REDIS_TLS
+              value: "true"
+            - name: QUEUE_BULL_REDIS_TLS_CA
+              value: "/tls/ca.crt"
+            - name: QUEUE_BULL_REDIS_TLS_CERT
+              value: "/tls/tls.crt"
+            - name: QUEUE_BULL_REDIS_TLS_KEY
+              value: "/tls/tls.key"
             - name: DB_TYPE
               value: postgresdb
+            - name: NODE_ENV
+              value: production
             - name: DB_POSTGRESDB_HOST
               value: postgres-service.n8n.svc.cluster.local
             - name: DB_POSTGRESDB_PORT
@@ -49,30 +98,30 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_NON_ROOT_PASSWORD
-            - name: N8N_PROTOCOL
-              value: http
-            - name: N8N_PORT
-              value: "5678"
-          image: n8nio/n8n
+            - name: DB_POSTGRESDB_CONNECTION_TIMEOUT
+              value: "30000"
+          image: n8nio/n8n:beta
           name: n8n
           ports:
             - containerPort: 5678
           resources:
             requests:
               memory: "250Mi"
+              cpu: "250m"
             limits:
               memory: "500Mi"
+              cpu: "500m"
           volumeMounts:
             - mountPath: /home/node/.n8n
               name: n8n-claim0
+            - mountPath: /tls
+              name: redis-tls
+              readOnly: true
       restartPolicy: Always
       volumes:
         - name: n8n-claim0
           persistentVolumeClaim:
             claimName: n8n-claim0
-        - name: n8n-secret
+        - name: redis-tls
           secret:
-            secretName: n8n-secret
-        - name: postgres-secret
-          secret:
-            secretName: postgres-secret
+            secretName: redis-tls

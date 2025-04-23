@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n-ha
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: n8n
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: n8n
+        role: worker
+    spec:
+      containers:
+      - name: n8n
+        image: n8nio/n8n
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        envFrom:
+        - secretRef:
+            name: n8n-secrets
+        env:
+        - name: QUEUE_MODE
+          value: redis
+        - name: N8N_WORKER
+          value: "true"
+        - name: N8N_EDITOR_BASE_URL
+          value: https://n8n.localhost
+        - name: WEBHOOK_URL
+          value: https://n8n.localhost
+        - name: DB_POSTGRESDB_HOST
+          value: n8n-postgresql-hl.n8n-ha.svc.cluster.local
+        - name: REDIS_HOST
+          value: n8n-redis-master.n8n-ha.svc.cluster.local
+        readinessProbe:
+          exec:
+            command:
+              - node
+              - -e
+              - "console.log('ready')"
+          initialDelaySeconds: 10
+          periodSeconds: 20

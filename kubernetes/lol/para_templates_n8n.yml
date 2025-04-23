@@ -1,0 +1,175 @@
+# Chart.yaml
+apiVersion: v2
+name: n8n-ha
+version: 0.1.0
+description: A Helm chart to deploy n8n in High Availability mode
+
+---
+# values.yaml
+replicaCount: 3
+image:
+  repository: n8nio/n8n
+  tag: latest
+  pullPolicy: IfNotPresent
+
+postgresql:
+  host: your-postgres-host
+  user: n8n
+  password: yourpassword
+  database: n8n
+
+n8n:
+  encryptionKey: supersecretkey
+  webhookUrl: https://n8n.example.com/
+  basicAuth:
+    enabled: true
+    user: admin
+    password: changeme
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  hosts:
+    - host: n8n.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: n8n-tls
+      hosts:
+        - n8n.example.com
+
+---
+# templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "n8n-ha.fullname" . }}
+  labels:
+    app: {{ include "n8n-ha.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "n8n-ha.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "n8n-ha.name" . }}
+    spec:
+      containers:
+        - name: n8n
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 5678
+          env:
+            - name: DB_TYPE
+              value: postgres
+            - name: DB_POSTGRESDB_HOST
+              value: {{ .Values.postgresql.host }}
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
+            - name: DB_POSTGRESDB_DATABASE
+              value: {{ .Values.postgresql.database }}
+            - name: DB_POSTGRESDB_USER
+              value: {{ .Values.postgresql.user }}
+            - name: DB_POSTGRESDB_PASSWORD
+              value: {{ .Values.postgresql.password }}
+            - name: N8N_BASIC_AUTH_ACTIVE
+              value: "{{ .Values.n8n.basicAuth.enabled }}"
+            - name: N8N_BASIC_AUTH_USER
+              value: {{ .Values.n8n.basicAuth.user }}
+            - name: N8N_BASIC_AUTH_PASSWORD
+              value: {{ .Values.n8n.basicAuth.password }}
+            - name: N8N_ENCRYPTION_KEY
+              value: {{ .Values.n8n.encryptionKey }}
+            - name: N8N_HOST
+              value: 0.0.0.0
+            - name: N8N_PORT
+              value: "5678"
+            - name: WEBHOOK_URL
+              value: {{ .Values.n8n.webhookUrl }}
+          volumeMounts:
+            - name: n8n-storage
+              mountPath: /home/node/.n8n
+      volumes:
+        - name: n8n-storage
+          persistentVolumeClaim:
+            claimName: {{ include "n8n-ha.fullname" . }}-pvc
+
+---
+# templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "n8n-ha.fullname" . }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 5678
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ include "n8n-ha.name" . }}
+
+---
+# templates/ingress.yaml
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "n8n-ha.fullname" . }}
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "n8n-ha.fullname" $ }}
+                port:
+                  number: 80
+          {{- end }}
+    {{- end }}
+{{- end }}
+
+---
+# templates/pvc.yaml
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "n8n-ha.fullname" . }}-pvc
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+

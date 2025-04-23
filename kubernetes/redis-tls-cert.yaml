@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: redis-tls
+  namespace: redis
+spec:
+  secretName: redis-tls
+  issuerRef:
+    name: redis-selfsigned-cluster
+    kind: ClusterIssuer
+  dnsNames:
+    - redis.redis.svc.cluster.local

@@ -1,0 +1,18 @@
+postgresql:
+  username: n8n
+  password: n8npass
+  database: n8n
+
+pgpool:
+  adminUsername: admin
+  adminPassword: adminpass
+
+replicaCount: 1
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 500m

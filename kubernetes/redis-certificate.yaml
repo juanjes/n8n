@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: redis-cert
+  namespace: redis
+spec:
+  secretName: redis-tls
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  commonName: redis.redis.svc.cluster.local
+  dnsNames:
+    - redis.redis.svc.cluster.local
+  issuerRef:
+    name: your-cluster-issuer
+    kind: ClusterIssuer

@@ -1,0 +1,27 @@
+step1_add_bitnami_repo:
+  description: Añadir el repositorio de Bitnami
+  commands:
+    - helm repo add bitnami https://charts.bitnami.com/bitnami
+    - helm repo update
+
+# 2️⃣ Instalar los charts
+# 🟥 Redis (HA)
+commands: |
+  helm install n8n-redis bitnami/redis \
+    --namespace n8n-ha \
+    --values redis-values.yaml
+# 🟦 PostgreSQL (HA)
+helm install n8n-postgresql bitnami/postgresql-ha \
+  --namespace n8n-ha \
+  --values postgres-values.yaml
+Nota: Asegúrate de que el namespace n8n-ha existe. Si no:
+kubectl create namespace n8n-ha
+
+# 3️⃣ Conexiones en n8n-main y n8n-worker
+Configura las siguientes variables de entorno en los Deployments de N8N:
+Redis Host:
+REDIS_HOST=n8n-redis-master.n8n-ha.svc.cluster.local
+PostgreSQL Host (Pgpool para HA):
+DB_POSTGRESDB_HOST=n8n-postgresql-hl.n8n-ha.svc.cluster.local
+Final: Puedes verificar los servicios tras la instalación con:
+kubectl get svc -n n8n-ha

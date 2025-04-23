@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: n8n-worker
+  template:
+    metadata:
+      labels:
+        app: n8n-worker
+    spec:
+      containers:
+        - name: n8n-worker
+          image: n8nio/n8n:beta
+          command: ["/bin/sh"]
+          args: ["-c", "sleep 10 && exec n8n worker"]
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          env:
+            - name: N8N_LOG_LEVEL
+              value: info
+            - name: DB_TYPE
+              value: postgresdb
+            - name: DB_POSTGRESDB_HOST
+              value: postgres-service.n8n.svc.cluster.local
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
+            - name: DB_POSTGRESDB_CONNECTION_TIMEOUT
+              value: "30000"
+            - name: DB_POSTGRESDB_DATABASE
+              value: n8n
+            - name: DB_POSTGRESDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_USER
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_NON_ROOT_PASSWORD
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secret
+                  key: encryption_key
+            - name: N8N_EXECUTIONS_MODE
+              value: "queue"
+            - name: N8N_QUEUE_MODE
+              value: "redis"
+            - name: QUEUE_BULL_REDIS_HOST
+              value: redis.redis.svc.cluster.local
+            - name: QUEUE_BULL_REDIS_PORT
+              value: "6379"
+            - name: QUEUE_BULL_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+            - name: QUEUE_BULL_REDIS_TLS
+              value: "true"
+            - name: QUEUE_BULL_REDIS_TLS_CA
+              value: "/tls/ca.crt"
+            - name: QUEUE_BULL_REDIS_TLS_CERT
+              value: "/tls/tls.crt"
+            - name: QUEUE_BULL_REDIS_TLS_KEY
+              value: "/tls/tls.key"
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+              value: "true"
+          volumeMounts:
+            - mountPath: /tls
+              name: redis-tls
+              readOnly: true
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: redis-tls

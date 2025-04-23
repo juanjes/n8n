@@ -1,0 +1,196 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: n8n-secrets
+  namespace: n8n-ha
+stringData:
+  DB_USER: n8n
+  DB_PASSWORD: n8npass
+  DB_NAME: n8n
+  REDIS_PASSWORD: redispass
+  N8N_JWT_SECRET: superjwtsecret
+  N8N_ENCRYPTION_KEY: superencryptionkey
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-pvc
+  namespace: n8n-ha
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-main
+  namespace: n8n-ha
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: n8n
+      role: main
+  template:
+    metadata:
+      labels:
+        app: n8n
+        role: main
+    spec:
+      containers:
+      - name: n8n
+        image: n8nio/n8n
+        ports:
+        - containerPort: 5678
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5678
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5678
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        envFrom:
+        - secretRef:
+            name: n8n-secrets
+        env:
+        - name: N8N_WORKER
+          value: "false"
+        - name: N8N_HOST
+          value: n8n.localhost
+        - name: N8N_PROTOCOL
+          value: http
+        - name: N8N_PORT
+          value: "5678"
+        - name: N8N_EDITOR_BASE_URL
+          value: https://n8n.localhost
+        - name: WEBHOOK_URL
+          value: https://n8n.localhost
+        - name: N8N_SECURE_COOKIE
+          value: "true"
+        - name: N8N_DIAGNOSTICS_ENABLED
+          value: "false"
+        - name: DB_POSTGRESDB_HOST
+          value: n8n-postgresql-hl.n8n-ha.svc.cluster.local
+        - name: REDIS_HOST
+          value: n8n-redis-master.n8n-ha.svc.cluster.local
+        volumeMounts:
+        - name: n8n-storage
+          mountPath: /home/node/.n8n
+      volumes:
+        - name: n8n-storage
+          persistentVolumeClaim:
+            claimName: n8n-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n-ha
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: n8n
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: n8n
+        role: worker
+    spec:
+      containers:
+      - name: n8n
+        image: n8nio/n8n
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        envFrom:
+        - secretRef:
+            name: n8n-secrets
+        env:
+        - name: QUEUE_MODE
+          value: redis
+        - name: N8N_WORKER
+          value: "true"
+        - name: N8N_EDITOR_BASE_URL
+          value: https://n8n.localhost
+        - name: WEBHOOK_URL
+          value: https//n8n.localhost
+        - name: DB_POSTGRESDB_HOST
+          value: n8n-postgresql-hl.n8n-ha.svc.cluster.local
+        - name: REDIS_HOST
+          value: n8n-redis-master.n8n-ha.svc.cluster.local
+        readinessProbe:
+          exec:
+            command:
+              - node
+              - -e
+              - "console.log('ready')"
+          initialDelaySeconds: 10
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: n8n-ha
+spec:
+  selector:
+    app: n8n
+    role: main
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5678
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: n8n-ingress
+  namespace: n8n-ha
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+    - host: n8n.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: n8n
+                port:
+                  number: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: n8n-pdb
+  namespace: n8n-ha
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: n8n
