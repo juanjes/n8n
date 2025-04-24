@@ -84,6 +84,8 @@ spec:
               value: production
             - name: DB_POSTGRESDB_HOST
               value: postgres-service.n8n.svc.cluster.local
+            - name: N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE
+              value: "true"
             - name: DB_POSTGRESDB_PORT
               value: "5432"
             - name: DB_POSTGRESDB_DATABASE

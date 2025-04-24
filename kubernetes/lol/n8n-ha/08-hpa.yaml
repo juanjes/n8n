@@ -8,8 +8,21 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: n8n-worker
-  minReplicas: 1 
+  minReplicas: 1
   maxReplicas: 3
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
   metrics:
     - type: Resource
       resource:
@@ -17,3 +30,9 @@ spec:
         target:
           type: Utilization
           averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
